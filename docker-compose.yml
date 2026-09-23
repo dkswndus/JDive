@@ -1,0 +1,51 @@
+# 로컬 개발용 구성이다. 운영 배포 구성은 4단계에서 따로 다룬다.
+#
+#   docker compose up -d db                  # DB만 (백엔드·프론트는 로컬에서 직접 실행)
+#   docker compose --profile app up --build  # DB + 백엔드 + 프론트엔드 전체
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: jdive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jdive_dev}
+      POSTGRES_DB: jdive
+    ports:
+      # 호스트의 5432 는 다른 프로세스가 쓰는 경우가 많아 5433 을 기본으로 한다.
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      - jdive-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jdive -d jdive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    profiles: ["app"]
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://jdive:${POSTGRES_PASSWORD:-jdive_dev}@db:5432/jdive
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+      args:
+        # Next.js rewrites 의 destination 은 빌드 시점에 고정된다.
+        BACKEND_INTERNAL_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  jdive-db:
