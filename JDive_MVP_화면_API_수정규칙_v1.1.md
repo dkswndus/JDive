@@ -23,7 +23,9 @@
 | --- | --- |
 | Base path | `/api/v1`, JSON(UTF-8) |
 | ID·시각 | UUID v4, ISO 8601 UTC |
-| 인증 | 세션 쿠키(HttpOnly, SameSite=Lax). 인증 API를 제외한 모든 API에 필요 |
+| 인증 | Google 로그인(OIDC)으로 인증하고, DB에 저장된 세션을 쿠키(HttpOnly, SameSite=Lax)로 유지한다. `/api/v1/auth/*`를 제외한 모든 API에 세션이 필요하다 |
+| 공개 URL·프록시 | `PUBLIC_BASE_URL` 하나로 통일한다. Next.js가 `/api/v1/*`를 경로 그대로 FastAPI에 전달하므로(동일 출처) 브라우저에 보이는 경로와 백엔드 경로가 같다. Google Redirect URI는 `{PUBLIC_BASE_URL}/api/v1/auth/google/callback`이다 |
+| CSRF | 상태를 바꾸는 요청(POST·PUT·PATCH·DELETE)은 `Origin` 헤더가 `PUBLIC_BASE_URL`의 출처와 같아야 한다. 다르거나 없으면 `403 csrf_origin_mismatch`다 |
 | 소유권 | 모든 리소스는 `user_id`를 검증한다. 타인 리소스는 `404`로 응답한다 |
 | 추적 | 모든 응답에 `X-Request-ID`를 넣고, 같은 ID를 서버 로그와 Sentry에 남긴다 |
 | 원문 로그 금지 | 요청 로그 미들웨어에서 `resume_text`, `jd_text`, `quote`, `note`, `text` 필드를 마스킹한다 |
@@ -217,7 +219,7 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 
 | 그룹 | 메서드·경로 | 설명 |
 | --- | --- | --- |
-| 계정 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout` | 인증 방식은 §9 미결 |
+| 계정 | `GET /auth/google/login`, `GET /auth/google/callback`, `POST /auth/logout` | Google 로그인(OIDC, PKCE·state·nonce 검증). 모두 `/api/v1/auth/*` 경로 |
 | | `GET /me` | 현재 사용자 |
 | | `DELETE /me` | 계정과 저장 데이터 전체 삭제 |
 | 경험 | `POST /experiences/extract` | 이력서 → 경험 후보 (저장 안 함) |
@@ -522,7 +524,8 @@ AI 출력은 저장 전에 아래 순서로 검증하고 보정한다.
 
 | 엔티티 | 필드 |
 | --- | --- |
-| `User` | `id`, `email`(unique), 인증 정보, `created_at` |
+| `User` | `id`, `email`(unique), ✚`google_sub`(unique), `created_at`. 비밀번호는 저장하지 않는다 |
+| ✚`Session` | `id`, `user_id`, `token_hash`(unique, 세션 토큰의 SHA-256), `created_at`, `expires_at`, `last_seen_at`. 로그아웃·계정 삭제 때 삭제한다 |
 | `Experience` | `id`, `user_id`, `title`, `role`, `technologies text[]`, ✚`activities jsonb` (`[{id, text, source_span}]`), `source_type`, `is_confirmed`, `confirmed_at`, ✚`version int`, `created_at`, `updated_at` |
 | `JobPosting` | `id`, `user_id`, `job_title`, `company_name`, `source_url`, `jd_text`, ✚`jd_hash`, `created_at`. (`user_id`, `jd_hash`) unique |
 | `AnalysisRun` | `id`, `user_id`, ✚`run_type`(`experience_extraction`\|`jd_analysis`), `job_posting_id`(추출은 null), `status`, `stage`, `model_version`, `prompt_version`, ✚`schema_version`, `requested_at`, `started_at`, `completed_at`, ✚`latency_ms`, ✚`attempt_count`, ✚`error_class`, ✚`token_usage jsonb`, ✚`input_experience_versions jsonb`(`[{id, version}]`), ✚`validation_stats jsonb`(버린 링크·낮춘 상태 건수) |
@@ -580,19 +583,20 @@ AI 출력은 저장 전에 아래 순서로 검증하고 보정한다.
 | 포함 | 제외 (2단계 이후) |
 | --- | --- |
 | 저장소 골격, Docker, GitHub Actions(린트·테스트) | LLM 호출 전체 |
-| DB 마이그레이션: `User`, `Experience`, `JobPosting`, `AnalysisRun`(테이블만) | `POST /experiences/extract` |
-| 인증, `GET/DELETE /me` | `POST /job-postings/{id}/analyses`의 실제 분석 |
+| DB 마이그레이션: `User`, `Session`, `Experience`, `JobPosting`, `AnalysisRun`(테이블만) | `POST /experiences/extract` |
+| Google 로그인·세션, 로그아웃, `GET/DELETE /me` | `POST /job-postings/{id}/analyses`의 실제 분석 |
 | 경험 **수동 등록**·수정·삭제 (`source_type=manual`) | 결과 화면, 검토 저장 |
 | 공고 저장 (`POST /job-postings`, 중복 감지) | 이벤트 수집 연동 |
 | Sentry 연결, `X-Request-ID`, 원문 필드 로그 마스킹 | |
 
 **1단계 완료 기준**
 
-- [ ] 가입·로그인 후 경험을 수동으로 등록·수정·삭제할 수 있고, 다시 접속해도 남아 있다.
+- [ ] Google 로그인 후 경험을 수동으로 등록·수정·삭제할 수 있고, 다시 접속해도 남아 있다.
+- [ ] OAuth state·nonce·PKCE와 ID 토큰 검증이 테스트로 확인된다.
 - [ ] JD를 저장할 수 있고, 같은 JD를 다시 저장하면 `duplicate_posting`을 받는다.
-- [ ] 계정 삭제 시 사용자 데이터가 DB에서 삭제된다.
+- [ ] 계정 삭제 시 사용자 데이터와 세션이 DB에서 삭제되고, 다른 사용자의 데이터는 유지된다(테스트로 확인).
 - [ ] PR마다 CI에서 린트와 테스트가 돈다.
-- [ ] 서버 로그와 Sentry에 원문 필드가 남지 않는다(테스트로 확인).
+- [ ] 서버 로그, 백엔드 Sentry, 프론트엔드 오류 수집에 이력서·JD 원문이 남지 않는다(테스트로 확인).
 
 ---
 
@@ -607,12 +611,16 @@ AI 출력은 저장 전에 아래 순서로 검증하고 보정한다.
 5. **`JobRequirement`를 `AnalysisRun`에 종속:** 재분석 때 요구사항 추출이 달라질 수 있으므로 요구사항은 공고가 아니라 실행 단위로 둔다.
 6. **`ExperienceMatch.feedback` 추가:** 별도 엔티티 없이 JSONB로 둔다.
 7. **`Experience.activities`에 안정 ID와 `version`:** 근거 인용과 경험 수정 이력의 정합성을 위해 필요하다.
+8. **Google 로그인 확정, `Session` 테이블 추가:** 인증은 FastAPI가 전담하고(OAuth·세션), Next.js는 동일 출처 프록시만 맡는다. 이메일+비밀번호 방식은 채택하지 않았으므로 `POST /auth/signup`, `POST /auth/login`을 없애고 `GET /auth/google/login`, `GET /auth/google/callback`으로 바꿨다. 세션은 토큰 해시를 DB에 저장해 로그아웃·계정 삭제 때 바로 무효화한다.
+9. **`activities[].id` 형식:** 순번(`a1`) 대신 서버가 부여하는 짧은 랜덤 문자열(`a` + 8자리 hex)을 쓴다. 항목을 삭제한 뒤 같은 ID가 재사용되는 일을 막기 위해서다. 이 문서 예시의 `a1`, `a2`는 표기용이다.
+10. **`existing_posting_id` 위치:** `409 duplicate_posting` 응답의 `error` 객체 최상위 필드로 반환한다.
+11. **CSRF 방어와 공개 URL 규칙 추가:** 쿠키 세션을 쓰므로 상태 변경 요청의 `Origin` 검증(§1)과 `PUBLIC_BASE_URL` 통일 규칙을 넣었다.
 
 ### 9.2 결정이 필요한 항목
 
 | # | 항목 | 이 문서의 기본안 | 선택지·영향 |
 | --- | --- | --- | --- |
-| 1 | 인증 방식 | 미정 (API는 세션 쿠키 전제) | 이메일+비밀번호 / 소셜 로그인. 1단계 첫 작업에 영향 |
+| 1 | 인증 방식 | ✔ **확정(2026-09-24): Google 로그인** | FastAPI가 OAuth·세션 전담, Next.js는 동일 출처 프록시. 항목 8 참고 |
 | 2 | LLM 제공자·모델 | 미정 | 비용, 구조화 출력 지원, 응답 시간(P95)에 영향 |
 | 3 | 분석 실행 방식 | 백그라운드 태스크+폴링 | 재시도·장애 복구 요구가 커지면 큐 도입 |
 | 4 | 재분석 시 이전 수정 이월 | 이월하지 않음 | 요구사항 텍스트 일치로 이월하면 편하지만 오매칭 위험 |

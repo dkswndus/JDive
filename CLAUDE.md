@@ -4,16 +4,25 @@
 
 ## 현재 상태
 
-- 설계 단계다. 소스 코드는 아직 없다.
+- 1단계(Google 로그인, 경험 수동 등록, JD 저장·중복 감지) 구현을 `feat/stage-1` 브랜치에서 진행 중이다. 범위는 스펙 문서 §8이다.
 - 사용자 검증 전의 MVP 기획이다. 사용자 성과나 개선 수치가 확보된 것처럼 쓰지 않는다.
 - 화면·API·데이터 모델·수정 규칙·이벤트 정의는 `JDive_MVP_화면_API_수정규칙_v1.1.md`에 있다. 구현 전에 먼저 읽는다.
 - MVP 범위는 **경험 등록 → JD 분석 → 근거 확인·수정 → 공고 검토 결과 저장** 한 흐름이다. 자동 공고 수집, 알림, 추천 피드, 자소서 생성, 적합도 백분율 점수는 범위 밖이다.
 
 ## 계획된 스택
 
-아직 도입 전이다. 코드가 생기면 실제 구성으로 고친다.
+- 백엔드: uv, FastAPI, SQLAlchemy 2, Alembic, psycopg 3, Authlib, pytest, ruff
+- 프론트엔드: Next.js(App Router), TypeScript, Tailwind, Vitest, Testing Library
+- 공통: PostgreSQL, Docker, GitHub Actions, Sentry. PostHog는 4단계에서 붙인다.
+- **인증은 Google 로그인으로 확정했다.** FastAPI가 OAuth와 DB 세션을 전담하고, Next.js는 `/api/v1/*`를 경로 그대로 넘기는 동일 출처 프록시만 맡는다. 브라우저에 보이는 인증 경로는 `/api/v1/auth/*`이고 Google Redirect URI는 `{PUBLIC_BASE_URL}/api/v1/auth/google/callback`이다.
+- LLM 제공자는 아직 미정이다(2단계에서 결정).
 
-Next.js · TypeScript / Python · FastAPI / PostgreSQL / Docker / GitHub Actions / PostHog / Sentry. LLM 제공자와 인증 방식은 미정이다.
+## 개발 방식
+
+- `main`에 직접 커밋하지 않는다. 기능 브랜치(`feat/...`)에서 작업 단위로 커밋하고, PR을 만들어 CI가 통과한 뒤 병합한다.
+- 가능한 범위에서 테스트를 먼저 쓰고, 실패하는 것을 확인한 뒤 구현한다(TDD).
+- ECC의 GateGuard 훅을 우회하거나 면제하지 않는다(`backend/**`, `frontend/**` 포함). 설정 변경이 필요하면 먼저 사유와 영향을 알린다.
+- 시크릿(`.env`, OAuth 클라이언트 시크릿 등)은 커밋하지 않는다. 저장소가 공개(PUBLIC)다. 커밋하는 것은 `.env.example`뿐이다.
 
 ## 명령어
 
@@ -31,6 +40,8 @@ Next.js · TypeScript / Python · FastAPI / PostgreSQL / Docker / GitHub Actions
 - **이력서·JD 원문을 로그와 분석 이벤트에 남기지 않는다.** 계정 삭제 시 저장 데이터도 삭제되도록 설계한다.
 - **점수·백분율을 만들지 않는다.** 요건별 상태의 개수만 보여준다.
 - **AI 품질 테스트는 가상 데이터로 한다.** 실제 사용자 이력서를 평가 데이터로 쓰려면 동의가 필요하다.
+- **프론트엔드 오류 수집에서도 원문을 제거한다.** Sentry Session Replay는 쓰지 않고, 이벤트 전송 전에 요청 본문·브레드크럼·사용자 정보를 걸러낸다.
+- **인증 검증을 약화하지 않는다.** OAuth state·nonce·PKCE, ID 토큰 검증(서명·iss·aud·exp·nonce·`email_verified`), 상태 변경 요청의 `Origin` 검증은 테스트로 지킨다.
 
 ## ECC
 
