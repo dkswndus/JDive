@@ -155,6 +155,34 @@ describe("useSession", () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
+  it("handleUnauthorized 는 401 이면 로그인 화면으로 보내고 true 를 돌려준다(세션 만료)", async () => {
+    await signedIn();
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = session.handleUnauthorized(new ApiError(401, "unauthorized"));
+    });
+
+    expect(handled).toBe(true);
+    expect(router.replace).toHaveBeenCalledWith("/login");
+  });
+
+  it.each([
+    ["다른 상태 코드", new ApiError(500, "internal_error")],
+    ["네트워크 오류", new ApiError(0, "network_error")],
+    ["ApiError 가 아닌 값", new Error("x")],
+  ])("handleUnauthorized 는 %s 이면 아무것도 하지 않고 false 를 돌려준다", async (_name, error) => {
+    await signedIn();
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = session.handleUnauthorized(error);
+    });
+
+    expect(handled).toBe(false);
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
   it("AuthGate 밖에서는 쓸 수 없다", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 

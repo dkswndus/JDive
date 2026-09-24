@@ -29,10 +29,11 @@ afterEach(() => {
 });
 
 describe("AppHeader", () => {
-  it("홈과 계정 화면으로 가는 링크를 보인다(계정 링크에 이메일)", async () => {
+  it("홈·내 경험·계정 화면으로 가는 링크를 보인다(계정 링크에 이메일)", async () => {
     await renderHeader();
 
     expect(screen.getByRole("link", { name: "JDive" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "내 경험" })).toHaveAttribute("href", "/experiences");
     expect(screen.getByRole("link", { name: "user@example.com" })).toHaveAttribute(
       "href",
       "/account",

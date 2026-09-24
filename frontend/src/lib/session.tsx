@@ -13,6 +13,11 @@ type SessionValue = {
   signOut: () => Promise<void>;
   /** 계정과 저장한 데이터를 모두 지우고 로그인 화면으로 간다(되돌릴 수 없다). 실패하면 ApiError. */
   deleteAccount: () => Promise<void>;
+  /**
+   * API 호출이 401(세션 만료)로 실패했으면 로그인 화면으로 보내고 true 를 돌려준다.
+   * 그 밖의 오류는 아무것도 하지 않고 false 를 돌려주므로, 화면이 직접 처리한다.
+   */
+  handleUnauthorized: (error: unknown) => boolean;
 };
 
 type GateState = { status: "loading" } | { status: "error" } | { status: "signed-in"; user: User };
@@ -64,6 +69,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
         deleteAccount: async () => {
           await api("/me", { method: "DELETE" });
           router.replace("/login?deleted=1");
+        },
+        handleUnauthorized: (error: unknown) => {
+          if (!(error instanceof ApiError && error.status === 401)) return false;
+          router.replace("/login");
+          return true;
         },
       },
     [user, router],
