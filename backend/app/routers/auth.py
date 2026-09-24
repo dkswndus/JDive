@@ -163,3 +163,15 @@ def logout(request: Request, settings: SettingsDep, db: DbDep) -> Response:
 @router.get("/me")
 def me(user: Annotated[User, Depends(get_current_user)]) -> MeResponse:
     return MeResponse(id=user.id, email=user.email)
+
+
+@router.delete("/me", status_code=204)
+def delete_me(
+    user: Annotated[User, Depends(get_current_user)], settings: SettingsDep, db: DbDep
+) -> Response:
+    """계정 삭제. 사용자 행만 지우면 소유 데이터와 세션은 DB 의 ON DELETE CASCADE 가 지운다."""
+    db.execute(delete(User).where(User.id == user.id))
+    db.commit()
+    response = Response(status_code=204)
+    clear_session_cookie(response, settings)
+    return response

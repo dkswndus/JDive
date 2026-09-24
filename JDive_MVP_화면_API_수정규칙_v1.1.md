@@ -256,6 +256,7 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 | 콜백 실패 | JSON이 아니라 `302 /login?error=<code>`로 보낸다. 사용자·세션은 만들지 않고, 원문·토큰·Google 오류 설명은 URL에 넣지 않는다. code: `access_denied`(사용자가 취소), `invalid_request`(code 없음), `invalid_state`(임시 쿠키 없음·위조·만료·state 불일치), `token_exchange_failed`, `invalid_id_token`, `email_not_verified`, `account_conflict`(이미 다른 계정이 쓰는 이메일) |
 | `POST /auth/logout` | 세션 행을 삭제하고 쿠키를 지운다. 세션이 없어도 `204`. `Origin` 검증 대상 |
 | `GET /me` | `200 {"id": "<uuid>", "email": "<email>"}`. 세션이 없거나 만료면 `401 unauthorized` |
+| `DELETE /me` | 세션이 필요하고 `Origin` 검증 대상이다. 사용자 행을 삭제하면 DB의 `ON DELETE CASCADE`로 그 사용자의 경험·공고·분석 기록·세션이 함께 지워진다. 세션 쿠키를 지우고 `204`. **다른 사용자의 데이터와 세션은 그대로 둔다.** 삭제는 되돌릴 수 없다 |
 
 ### 4.2 `POST /experiences/extract`
 
