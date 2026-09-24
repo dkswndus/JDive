@@ -244,12 +244,16 @@ def test_callback_rejects_missing_handshake_cookie(auth_client, fake_google, db)
     assert fake_google.token_requests == []
 
 
-def test_callback_rejects_tampered_handshake_cookie(auth_client, fake_google, db):
+# 서명의 마지막 글자는 base64 의 미사용 비트라, 바꿔도 같은 서명으로 읽히는 경우가 있다(약 6%).
+# 그래서 페이로드의 첫 글자와 서명 중간 글자를 바꾼다.
+@pytest.mark.parametrize("position", [0, -10], ids=["payload", "signature"])
+def test_callback_rejects_tampered_handshake_cookie(auth_client, fake_google, db, position):
     code, state = start(auth_client, fake_google)
     for cookie in auth_client.cookies.jar:
         if cookie.name == "jdive_oauth":
-            last = cookie.value[-1]
-            cookie.value = cookie.value[:-1] + ("A" if last != "A" else "B")
+            i = position % len(cookie.value)
+            replacement = "A" if cookie.value[i] != "A" else "B"
+            cookie.value = cookie.value[:i] + replacement + cookie.value[i + 1 :]
 
     response = finish(auth_client, code, state)
 
