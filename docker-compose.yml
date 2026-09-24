@@ -21,6 +21,17 @@ services:
       timeout: 3s
       retries: 10
 
+  # 백엔드가 뜨기 전에 한 번 실행되고 끝난다.
+  migrate:
+    profiles: ["app"]
+    build: ./backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://jdive:${POSTGRES_PASSWORD:-jdive_dev}@db:5432/jdive
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     profiles: ["app"]
     build: ./backend
@@ -30,8 +41,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://jdive:${POSTGRES_PASSWORD:-jdive_dev}@db:5432/jdive
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:8000:8000"
 
