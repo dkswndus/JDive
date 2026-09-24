@@ -24,7 +24,7 @@ cp frontend/.env.example frontend/.env.local
 
 docker compose up -d db                 # PostgreSQL (호스트 5433)
 
-cd backend && uv sync && uv run uvicorn app.main:app --reload   # http://localhost:8000
+cd backend && uv sync && uv run uvicorn app.main:app --reload --no-access-log   # http://localhost:8000
 cd frontend && npm ci && npm run dev                            # http://localhost:3000
 ```
 

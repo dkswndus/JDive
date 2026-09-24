@@ -21,4 +21,5 @@ RUN useradd --system --uid 10001 app && chown -R app /app
 USER app
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# uvicorn 접속 로그는 쿼리 문자열(OAuth code·state)을 남기므로 끈다. 접속 로그는 앱이 직접 남긴다.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

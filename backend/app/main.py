@@ -1,8 +1,27 @@
 from fastapi import FastAPI
 
+from app.config import Settings, get_settings
+from app.errors import register_error_handlers
+from app.logging_config import configure_logging
+from app.middleware import RequestContextMiddleware
+from app.sentry_setup import init_sentry
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="JDive API")
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging()
+    init_sentry(settings.sentry_dsn, settings.environment)
+
+    is_production = settings.environment == "production"
+    app = FastAPI(
+        title="JDive API",
+        docs_url=None if is_production else "/docs",
+        redoc_url=None,
+        openapi_url=None if is_production else "/openapi.json",
+    )
+    app.state.settings = settings
+    app.add_middleware(RequestContextMiddleware)
+    register_error_handlers(app)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
