@@ -134,8 +134,8 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 | --- | --- | --- | --- | --- |
 | `title` | text | ✔ | ≤100자 | 프로젝트명 |
 | `role` | text | | ≤100자 | 담당 역할 |
-| `technologies` | 태그 입력 | | ≤30개 | |
-| `activities[].text` | textarea 목록 | ✔(≥1) | 항목당 ≤500자 | 실제 수행 내용. 항목 추가·삭제·순서 변경 가능 |
+| `technologies` | 태그 입력 | | ≤30개, 항목당 ≤40자 | 항목 길이는 DB 컬럼(`varchar(40)`)에 맞춘다 |
+| `activities[].text` | textarea 목록 | ✔(≥1) | 항목당 ≤500자, 목록 ≤50개 | 실제 수행 내용. 항목 추가·삭제·순서 변경 가능. 개수 상한은 입력 경계 보호용이다 |
 | `activities[].source_span` | 읽기 전용 | | | 이력서 원문 중 AI가 근거로 삼은 부분. 수정 불가 |
 | 카드 단위 동작 | 버튼 | | | "확인 완료 후 저장" / "이 경험 제외" |
 
@@ -306,6 +306,23 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 ```
 
 응답 `201`: 저장된 `Experience` (§6). `activities[]`에는 서버가 부여한 안정 ID(`a1`, `a2`…)가 붙는다. 저장 후 `experience_saved` 이벤트를 남긴다.
+
+#### 4.3.1 경험 CRUD 동작 (1단계: 수동 등록)
+
+활동 ID는 `a` + 16진수 8자리(예: `a3f09c1d`)의 무작위 문자열이다. 순번(`a1`, `a2`…)은 항목을 지운 뒤 새로 추가할 때 이전 ID가 재사용될 수 있어 쓰지 않는다. 응답의 `Experience`는 `id`, `title`, `role`, `technologies`, `activities[{id, text, source_span}]`, `source_type`, `is_confirmed`, `confirmed_at`, `version`, `created_at`, `updated_at`이며 `user_id`는 내보내지 않는다.
+
+| 경로 | 동작 |
+| --- | --- |
+| `POST /experiences` | 1단계는 `source_type=manual`만 받는다(생략하면 `manual`). `extraction_run_id`는 받지 않는다. `activities[]`는 `{text}`만 받고 서버가 `id`와 `source_span=null`을 붙인다. 저장하면 `is_confirmed=true`, `confirmed_at`=저장 시각, `version=1`. `201` |
+| `GET /experiences` | `200 {"items": [Experience, …]}`. 본인 것만, 등록 순(`created_at` 오름차순, 같으면 `id`). 페이지네이션은 하지 않는다 |
+| `GET /experiences/{id}` | `200`. 없거나 타인 소유면 `404 not_found` |
+| `PATCH /experiences/{id}` | 바꿀 필드(`title`, `role`, `technologies`, `activities`)만 최소 하나 보낸다. `role`을 `null`로 보내면 지운다. `activities`는 전체 목록을 보내며, 기존 항목은 `id`를 함께 보내면 ID와 `source_span`이 유지되고 `id`가 없으면 새 항목이다. `source_span`은 읽기 전용이라 `GET`으로 받은 항목을 그대로 돌려보내도 되며, 보낸 값은 무시하고 저장된 값을 유지한다. 이 경험에 없는 `id`나 같은 요청 안의 중복 `id`는 `422`. 응답 `200`. **값이 실제로 바뀐 경우에만** `version`을 1 올리고 `updated_at`을 갱신한다(R5) |
+| `DELETE /experiences/{id}` | `204`. 없거나 타인 소유면 `404 not_found` |
+
+- `source_type`, `is_confirmed`, `version` 등 위에 없는 필드를 보내면 `422`다(요청 본문의 알 수 없는 필드는 모두 거부한다).
+- 모든 경로는 세션이 필요하고(`401`), 상태를 바꾸는 요청은 `Origin` 검증을 거친다(`403`).
+- 검증 실패는 `422 validation_error`이며 `details`에 필드와 사유만 담는다. 입력값은 오류 응답과 로그에 넣지 않는다.
+- 경로의 `{id}` 형식이 UUID가 아니면 `422`다.
 
 ### 4.4 `POST /job-postings` → `POST /job-postings/{id}/analyses`
 
