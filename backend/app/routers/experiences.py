@@ -6,14 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +14,7 @@ from app.auth import get_current_user
 from app.db import get_db
 from app.errors import AppError
 from app.models import Experience, User
+from app.schemas import Strict, UtcDatetime, constrained_text
 
 router = APIRouter(prefix="/experiences")
 
@@ -29,24 +23,10 @@ DbDep = Annotated[Session, Depends(get_db)]
 
 INVALID_INPUT = "입력값을 확인해 주세요."
 
-
-def _text(max_length: int) -> Any:
-    return Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length)
-    ]
-
-
-Title = _text(100)
-Technology = _text(40)  # experiences.technologies 는 varchar(40)[] 다
-ActivityText = _text(500)
+Title = constrained_text(100)
+Technology = constrained_text(40)  # experiences.technologies 는 varchar(40)[] 다
+ActivityText = constrained_text(500)
 Technologies = Annotated[list[Technology], Field(max_length=30)]
-UtcDatetime = Annotated[datetime, AfterValidator(lambda value: value.astimezone(UTC))]
-
-
-class Strict(BaseModel):
-    """스펙에 없는 필드는 모두 거부한다(source_type·version 등을 조용히 바꾸지 못하게)."""
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class ActivityCreate(Strict):

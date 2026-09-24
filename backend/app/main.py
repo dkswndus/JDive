@@ -5,7 +5,7 @@ from app.config import Settings, get_settings
 from app.errors import register_error_handlers
 from app.logging_config import configure_logging
 from app.middleware import RequestContextMiddleware
-from app.routers import auth, experiences
+from app.routers import auth, experiences, job_postings
 from app.sentry_setup import init_sentry
 
 
@@ -33,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api = APIRouter(prefix="/api/v1", dependencies=[Depends(require_same_origin)])
     api.include_router(auth.router)
     api.include_router(experiences.router)
+    api.include_router(job_postings.router)
     app.include_router(api)
 
     return app

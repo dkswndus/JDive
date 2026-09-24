@@ -359,6 +359,19 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 - `status`: `queued` → `extracting_requirements` → `matching` → `completed` | `failed`
 - `failed`일 때 `error_class`는 `llm_timeout`, `llm_provider_error`, `schema_invalid`, `evidence_check_failed` 중 하나다. 사용자에게는 원인 문구만 보여주고 내부 상세는 노출하지 않는다.
 
+#### 4.4.1 공고 저장·조회 동작 (1단계)
+
+| 경로 | 동작 |
+| --- | --- |
+| `POST /job-postings` | 요청 `{job_title, company_name, source_url, jd_text}`. 앞뒤 공백은 잘라낸다. `source_url`은 생략·`null`·빈 문자열이면 저장하지 않고, 있으면 `http`·`https` 주소만 받는다(서버는 접속하지 않는다). `jd_text`는 200~15,000자(§1.2). 저장하면 `201`과 `JobPosting`(`id`, `job_title`, `company_name`, `source_url`, `jd_text`, `created_at`) |
+| 중복 감지 | `jd_hash` = `jd_text`를 유니코드 NFC로 맞추고 모든 공백(줄바꿈 포함) 연속을 공백 하나로 줄인 뒤 SHA-256(16진수)이다. (`user_id`, `jd_hash`)가 같으면 공고명·기업명이 달라도 같은 JD이며 `409 duplicate_posting`과 `error.existing_posting_id`(기존 공고 ID)를 반환한다. 다른 사용자는 같은 JD를 저장할 수 있다. 동시에 같은 JD를 저장해도 DB 유니크 제약으로 하나만 남고 나머지는 `409`를 받는다 |
+| `GET /job-postings` | `200 {"items": [{id, job_title, company_name, source_url, created_at}, …]}`. 본인 것만, 최근 저장순(`created_at` 내림차순). 목록에는 `jd_text`를 넣지 않는다. 페이지네이션은 하지 않는다 |
+| `GET /job-postings/{id}` | `200 JobPosting`(`jd_text` 포함). 없거나 타인 소유면 `404 not_found`, `{id}`가 UUID가 아니면 `422` |
+
+- `jd_hash`와 `user_id`는 응답에 넣지 않는다.
+- 1단계는 공고 삭제(`DELETE /job-postings/{id}`)와 분석(`POST /job-postings/{id}/analyses`)을 구현하지 않는다.
+- 세션이 필요하고(`401`), 상태를 바꾸는 요청은 `Origin` 검증을 거친다(`403`). `jd_text`는 오류 응답과 로그에 넣지 않는다.
+
 ### 4.5 `GET /analysis-runs/{id}/result`
 
 ```json
