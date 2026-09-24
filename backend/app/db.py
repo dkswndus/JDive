@@ -1,10 +1,9 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine
+from fastapi import Request
+from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-
-from app.config import get_settings
 
 
 class Base(DeclarativeBase):
@@ -12,16 +11,12 @@ class Base(DeclarativeBase):
 
 
 @lru_cache
-def get_engine() -> Engine:
-    return create_engine(get_settings().database_url, pool_pre_ping=True)
+def _sessionmaker(database_url: str) -> sessionmaker[Session]:
+    engine = create_engine(database_url, pool_pre_ping=True)
+    return sessionmaker(engine, expire_on_commit=False)
 
 
-@lru_cache
-def get_sessionmaker() -> sessionmaker[Session]:
-    return sessionmaker(get_engine(), expire_on_commit=False)
-
-
-def get_db() -> Iterator[Session]:
-    """요청 하나에 세션 하나를 준다. 라우트에서 직접 세션을 만들지 않는다."""
-    with get_sessionmaker()() as session:
+def get_db(request: Request) -> Iterator[Session]:
+    """요청 하나에 세션 하나를 준다. 접속 대상은 create_app 에 준 Settings 를 따른다."""
+    with _sessionmaker(request.app.state.settings.database_url)() as session:
         yield session

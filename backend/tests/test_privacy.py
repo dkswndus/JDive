@@ -1,13 +1,17 @@
 import json
 import logging
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 import sentry_sdk
 from sentry_sdk.transport import Transport
 
+from app.google_oidc import get_http_client
 from app.sentry_setup import init_sentry, scrub_event
 from tests.conftest import SENTINEL
+from tests.fake_google import CLIENT_SECRET
 
 SENTINEL_COOKIE = "SENTINEL-COOKIE-51d2"
 SENTINEL_CODE = "SENTINEL-CODE-77aa"
@@ -104,6 +108,33 @@ def test_unhandled_exception_is_reported_without_original_text(sentry_events, cl
     for secret in ALL_SENTINELS:
         assert secret not in serialized
     assert "RuntimeError" in serialized  # 예외 종류와 위치는 남겨야 디버깅할 수 있다
+
+
+def test_oauth_values_never_reach_sentry_when_the_callback_crashes(
+    sentry_events, make_auth_client, fake_google
+):
+    client = make_auth_client()
+    location = client.get("/api/v1/auth/google/login").headers["location"]
+    code, state = fake_google.authorize(location)
+    verifiers: list[str] = []
+
+    def explode(request: httpx.Request) -> httpx.Response:
+        form = parse_qs(request.content.decode())
+        verifiers.append(form["code_verifier"][0])
+        raise RuntimeError(f"토큰 요청 실패: {request.content.decode()}")  # 본문이 메시지에 실린다
+
+    client.app.dependency_overrides[get_http_client] = lambda: httpx.Client(
+        transport=httpx.MockTransport(explode)
+    )
+    response = client.get("/api/v1/auth/google/callback", params={"code": code, "state": state})
+
+    assert response.status_code == 500
+    assert len(sentry_events) == 1
+    serialized = json.dumps(sentry_events, ensure_ascii=False)
+    oauth_cookie = client.cookies.get("jdive_oauth")
+    nonce = parse_qs(urlsplit(location).query)["nonce"][0]
+    for secret in [code, state, nonce, *verifiers, CLIENT_SECRET, oauth_cookie]:
+        assert secret and secret not in serialized
 
 
 def test_scrub_event_removes_request_user_locals_and_breadcrumbs():

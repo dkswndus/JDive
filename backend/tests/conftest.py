@@ -1,6 +1,7 @@
 import os
 from typing import Annotated
 
+import httpx
 import pytest
 from alembic import command
 from fastapi import APIRouter, Body
@@ -10,7 +11,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.db import get_db
 from app.errors import AppError
+from app.google_oidc import get_http_client
 from app.main import create_app
 from tests.db_utils import (
     ALL_TABLES,
@@ -18,6 +21,7 @@ from tests.db_utils import (
     alembic_config,
     ensure_database,
 )
+from tests.fake_google import CLIENT_ID, CLIENT_SECRET, ORIGIN, FakeGoogle
 
 # 이력서·JD 원문을 대신하는 가상 문자열. 로그·오류 수집·응답 어디에도 나타나면 안 된다.
 SENTINEL = "SENTINEL-JD-9f3a7c"
@@ -92,3 +96,46 @@ def db(migrated_engine):
         yield session
     with migrated_engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {ALL_TABLES} RESTART IDENTITY CASCADE"))  # noqa: S608
+
+
+@pytest.fixture
+def fake_google() -> FakeGoogle:
+    return FakeGoogle()
+
+
+@pytest.fixture
+def auth_settings() -> Settings:
+    """실제 .env 값이 섞이지 않도록 모든 인증 설정을 테스트 값으로 고정한다."""
+    return Settings(
+        _env_file=None,
+        environment="test",
+        public_base_url=ORIGIN,
+        session_secret="test-session-secret-" + "x" * 24,
+        google_client_id=CLIENT_ID,
+        google_client_secret=CLIENT_SECRET,
+    )
+
+
+@pytest.fixture
+def make_auth_client(db, fake_google, auth_settings):
+    """DB 는 테스트 세션으로, Google 은 가짜 서버로 바꾼 앱의 클라이언트를 만든다."""
+
+    def make(base_url: str = "http://testserver", **settings_overrides) -> TestClient:
+        application = create_app(auth_settings.model_copy(update=settings_overrides))
+        application.dependency_overrides[get_db] = lambda: db
+        application.dependency_overrides[get_http_client] = lambda: httpx.Client(
+            transport=httpx.MockTransport(fake_google.handle)
+        )
+        return TestClient(
+            application,
+            base_url=base_url,
+            raise_server_exceptions=False,
+            follow_redirects=False,
+        )
+
+    return make
+
+
+@pytest.fixture
+def auth_client(make_auth_client) -> TestClient:
+    return make_auth_client()

@@ -47,6 +47,7 @@
 | HTTP | code | 상황 |
 | --- | --- | --- |
 | 401 | `unauthorized` | 세션 없음 또는 만료 |
+| 403 | `csrf_origin_mismatch` | 상태를 바꾸는 요청의 `Origin`이 `PUBLIC_BASE_URL`의 출처와 다르거나 없음 (§1) |
 | 404 | `not_found` | 리소스 없음, 또는 타인 소유 |
 | 409 | `no_confirmed_experience` | 확인 완료된 경험이 없는 상태에서 분석 요청 |
 | 409 | `analysis_in_progress` | 같은 공고에 진행 중인 분석이 있음 |
@@ -57,6 +58,7 @@
 | 422 | `evidence_not_in_experience` | 인용한 근거가 해당 경험 원문에 없음 |
 | 429 | `rate_limited` | 요청 과다 |
 | 502 | `ai_unavailable` | LLM 호출 실패. 재시도 소진 후 |
+| 503 | `auth_not_configured` | 로그인 설정이 없음(`SESSION_SECRET` 32자 미만, Google 클라이언트 ID·시크릿 누락). 로그인 시작 시에만 반환 |
 
 ### 1.2 입력 제한 (초기값)
 
@@ -243,6 +245,17 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 | 검토 | `PUT /job-postings/{id}/review` | 검토 상태 저장·수정 |
 | | `DELETE /job-postings/{id}/review` | 미검토로 되돌리기 |
 | 이벤트 | `POST /events` | 클라이언트 발생 이벤트 (화이트리스트) |
+
+#### 4.1.1 인증 API 동작
+
+| 경로 | 동작 |
+| --- | --- |
+| `GET /auth/google/login` | state·nonce·PKCE code_verifier를 서버가 만들어 서명한 임시 쿠키(`jdive_oauth`, HttpOnly, SameSite=Lax, 10분)에 담고 Google로 `302`한다. 요청은 `response_type=code`, `scope=openid email`, `code_challenge_method=S256`이다. 로그인 설정이 없으면 `503 auth_not_configured` |
+| `GET /auth/google/callback` | 임시 쿠키의 서명·만료·state 일치를 확인 → 코드 교환(`code_verifier` 전송) → ID 토큰 검증 → 사용자 upsert(`google_sub` 기준, 이메일은 소문자) → 세션 쿠키(`jdive_session`, HttpOnly, SameSite=Lax, `PUBLIC_BASE_URL`이 https면 Secure, 14일) 발급 → 임시 쿠키 삭제 → `302 /` |
+| ID 토큰 검증 | Google JWKS로 서명 확인(알고리즘 RS256만 허용), `iss`(`https://accounts.google.com` 또는 `accounts.google.com`), `aud`(=Google 클라이언트 ID), `exp`, `nonce`(=로그인 시작 때 만든 값), `sub`, `email` 필수, `email_verified`가 `true` |
+| 콜백 실패 | JSON이 아니라 `302 /login?error=<code>`로 보낸다. 사용자·세션은 만들지 않고, 원문·토큰·Google 오류 설명은 URL에 넣지 않는다. code: `access_denied`(사용자가 취소), `invalid_request`(code 없음), `invalid_state`(임시 쿠키 없음·위조·만료·state 불일치), `token_exchange_failed`, `invalid_id_token`, `email_not_verified`, `account_conflict`(이미 다른 계정이 쓰는 이메일) |
+| `POST /auth/logout` | 세션 행을 삭제하고 쿠키를 지운다. 세션이 없어도 `204`. `Origin` 검증 대상 |
+| `GET /me` | `200 {"id": "<uuid>", "email": "<email>"}`. 세션이 없거나 만료면 `401 unauthorized` |
 
 ### 4.2 `POST /experiences/extract`
 

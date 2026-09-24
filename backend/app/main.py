@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 
+from app.auth import require_same_origin
 from app.config import Settings, get_settings
 from app.errors import register_error_handlers
 from app.logging_config import configure_logging
 from app.middleware import RequestContextMiddleware
+from app.routers import auth
 from app.sentry_setup import init_sentry
 
 
@@ -26,6 +28,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    # 상태를 바꾸는 요청은 모두 Origin 검증을 거친다(CSRF).
+    api = APIRouter(prefix="/api/v1", dependencies=[Depends(require_same_origin)])
+    api.include_router(auth.router)
+    app.include_router(api)
 
     return app
 
