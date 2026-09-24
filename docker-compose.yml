@@ -53,6 +53,8 @@ services:
       args:
         # Next.js rewrites 의 destination 은 빌드 시점에 고정된다.
         BACKEND_INTERNAL_URL: http://backend:8000
+        # NEXT_PUBLIC_* 도 빌드 시점에 고정된다. 비우면 프론트엔드 오류 수집이 꺼진다.
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     depends_on:
       - backend
     ports:
