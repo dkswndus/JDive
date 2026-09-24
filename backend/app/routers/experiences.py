@@ -65,7 +65,7 @@ class ExperienceCreate(Strict):
     title: Title
     role: Title | None = None
     technologies: Technologies = Field(default_factory=list)
-    activities: Annotated[list[ActivityCreate], Field(min_length=1, max_length=50)]
+    activities: Annotated[list[ActivityCreate], Field(min_length=1, max_length=20)]
     source_type: Literal["manual"] = "manual"  # 1단계는 수동 등록만 받는다
 
 
@@ -73,7 +73,7 @@ class ExperiencePatch(Strict):
     title: Title | None = None
     role: Title | None = None  # null 로 보내면 지운다
     technologies: Technologies | None = None
-    activities: Annotated[list[ActivityUpdate], Field(min_length=1, max_length=50)] | None = None
+    activities: Annotated[list[ActivityUpdate], Field(min_length=1, max_length=20)] | None = None
 
     @model_validator(mode="after")
     def _at_least_one_and_no_null_where_required(self) -> "ExperiencePatch":

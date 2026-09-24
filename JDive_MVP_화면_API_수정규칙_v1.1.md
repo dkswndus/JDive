@@ -53,7 +53,7 @@
 | 409 | `analysis_in_progress` | 같은 공고에 진행 중인 분석이 있음 |
 | 409 | `duplicate_posting` | 같은 JD(`jd_hash`)가 이미 있음. `existing_posting_id`를 함께 반환 |
 | 422 | `validation_error` | 필드 형식·길이 위반 |
-| 422 | `input_too_long` | 입력 글자 수 초과 |
+| 422 | `input_too_long` | 글자 수가 §1.2의 최대치를 넘음. 오류가 모두 글자 수 초과일 때만 이 코드를 쓰고, 다른 위반(최소 미달·형식·개수 초과)이 섞이면 `validation_error`다 |
 | 422 | `evidence_required` | 상태와 근거 조합이 규칙 위반 (§5 R3) |
 | 422 | `evidence_not_in_experience` | 인용한 근거가 해당 경험 원문에 없음 |
 | 429 | `rate_limited` | 요청 과다 |
@@ -70,6 +70,7 @@
 | 경험 `technologies` | 0개 | 30개, 각 40자 |
 | 경험 `activities` | 1개 | 20개, 각 500자 |
 | 공고 `job_title` / `company_name` | 1자 | 150자 / 100자 |
+| 공고 `source_url` | 0자 | 2,000자. `http`·`https` 주소만 받는다 |
 | 검토 `note` | 0자 | 500자 |
 
 ### 1.3 비동기 분석
@@ -134,8 +135,8 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 | --- | --- | --- | --- | --- |
 | `title` | text | ✔ | ≤100자 | 프로젝트명 |
 | `role` | text | | ≤100자 | 담당 역할 |
-| `technologies` | 태그 입력 | | ≤30개, 항목당 ≤40자 | 항목 길이는 DB 컬럼(`varchar(40)`)에 맞춘다 |
-| `activities[].text` | textarea 목록 | ✔(≥1) | 항목당 ≤500자, 목록 ≤50개 | 실제 수행 내용. 항목 추가·삭제·순서 변경 가능. 개수 상한은 입력 경계 보호용이다 |
+| `technologies` | 태그 입력 | | ≤30개, 항목당 ≤40자 | §1.2 |
+| `activities[].text` | textarea 목록 | ✔(≥1) | 항목당 ≤500자, 목록 ≤20개 | 실제 수행 내용. 항목 추가·삭제·순서 변경 가능. §1.2 |
 | `activities[].source_span` | 읽기 전용 | | | 이력서 원문 중 AI가 근거로 삼은 부분. 수정 불가 |
 | 카드 단위 동작 | 버튼 | | | "확인 완료 후 저장" / "이 경험 제외" |
 
@@ -321,7 +322,7 @@ JD 분석은 수 초에서 수십 초가 걸릴 수 있다. 그래서 `POST`는 
 
 - `source_type`, `is_confirmed`, `version` 등 위에 없는 필드를 보내면 `422`다(요청 본문의 알 수 없는 필드는 모두 거부한다).
 - 모든 경로는 세션이 필요하고(`401`), 상태를 바꾸는 요청은 `Origin` 검증을 거친다(`403`).
-- 검증 실패는 `422 validation_error`이며 `details`에 필드와 사유만 담는다. 입력값은 오류 응답과 로그에 넣지 않는다.
+- 검증 실패는 `422`이며(`validation_error`, 오류가 모두 글자 수 초과이면 `input_too_long`, §1.1) `details`에 필드와 사유만 담는다. 입력값은 오류 응답과 로그에 넣지 않는다.
 - 경로의 `{id}` 형식이 UUID가 아니면 `422`다.
 
 ### 4.4 `POST /job-postings` → `POST /job-postings/{id}/analyses`

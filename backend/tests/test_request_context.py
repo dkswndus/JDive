@@ -39,14 +39,26 @@ def test_unknown_route_uses_common_error_format(client):
     assert error["request_id"] == response.headers["X-Request-ID"]
 
 
-def test_validation_error_lists_fields_without_echoing_input(client):
+def test_too_long_text_is_reported_as_input_too_long_without_echoing_input(client):
     response = client.post("/_t/validate", json={"jd_text": SENTINEL * 3})
 
     assert response.status_code == 422
     error = response.json()["error"]
-    assert error["code"] == "validation_error"
+    assert error["code"] == "input_too_long"
     assert error["details"] == [{"field": "jd_text", "issue": "string_too_long"}]
     assert SENTINEL not in response.text
+
+
+def test_other_violations_are_validation_errors_even_with_a_too_long_field(client):
+    missing = client.post("/_t/validate", json={})
+    mixed = client.post("/_t/validate", json={"jd_text": SENTINEL * 3, "count": "abc"})
+
+    for response in (missing, mixed):
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+    issues = {detail["issue"] for detail in mixed.json()["error"]["details"]}
+    assert issues == {"string_too_long", "int_parsing"}
+    assert SENTINEL not in mixed.text
 
 
 def test_app_error_carries_status_and_extra_fields(client):

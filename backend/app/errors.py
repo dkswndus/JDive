@@ -92,6 +92,7 @@ def register_error_handlers(app: FastAPI) -> None:
             }
             for err in exc.errors()
         ]
-        return JSONResponse(
-            error_body("validation_error", _STATUS_MESSAGES[422], details), status_code=422
-        )
+        # 오류가 모두 글자 수 초과일 때만 input_too_long 이다(스펙 §1.1).
+        too_long = all(detail["issue"] == "string_too_long" for detail in details)
+        code = "input_too_long" if details and too_long else "validation_error"
+        return JSONResponse(error_body(code, _STATUS_MESSAGES[422], details), status_code=422)

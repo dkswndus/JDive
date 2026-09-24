@@ -29,6 +29,7 @@ SENTINEL = "SENTINEL-JD-9f3a7c"
 
 class _Body(BaseModel):
     jd_text: str = Field(max_length=10)
+    count: int = 0
 
 
 def _test_router() -> APIRouter:

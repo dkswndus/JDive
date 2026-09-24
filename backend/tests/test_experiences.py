@@ -107,37 +107,62 @@ def test_create_trims_surrounding_whitespace(client):
     assert body["activities"][0]["text"] == "내용"
 
 
+# (요청 덮어쓰기, 오류가 나는 필드, 오류 코드) — 글자 수 초과만 input_too_long 이다(§1.1)
 INVALID_CARDS = [
-    pytest.param({"title": None}, "title", id="no-title"),
-    pytest.param({"title": "   "}, "title", id="blank-title"),
-    pytest.param({"title": "가" * 101}, "title", id="title-too-long"),
-    pytest.param({"role": "가" * 101}, "role", id="role-too-long"),
-    pytest.param({"technologies": [f"t{i}" for i in range(31)]}, "technologies", id="31-techs"),
-    pytest.param({"technologies": ["x" * 41]}, "technologies.0", id="tech-too-long"),
-    pytest.param({"technologies": ["  "]}, "technologies.0", id="blank-tech"),
-    pytest.param({"activities": []}, "activities", id="no-activities"),
-    pytest.param({"activities": None}, "activities", id="activities-missing"),
-    pytest.param({"activities": [{"text": "  "}]}, "activities.0.text", id="blank-activity"),
-    pytest.param({"activities": [{"text": "가" * 501}]}, "activities.0.text", id="activity-long"),
-    pytest.param({"activities": [{"text": "x"}] * 51}, "activities", id="51-activities"),
+    pytest.param({"title": None}, "title", "validation_error", id="no-title"),
+    pytest.param({"title": "   "}, "title", "validation_error", id="blank-title"),
+    pytest.param({"title": "가" * 101}, "title", "input_too_long", id="title-too-long"),
+    pytest.param({"role": "가" * 101}, "role", "input_too_long", id="role-too-long"),
     pytest.param(
-        {"activities": [{"text": "x", "source_span": "AI"}]}, "activities.0.source_span", id="span"
+        {"technologies": [f"t{i}" for i in range(31)]},
+        "technologies",
+        "validation_error",
+        id="31-techs",
     ),
-    pytest.param({"source_type": "resume_extract"}, "source_type", id="not-manual"),
-    pytest.param({"extraction_run_id": str(uuid.uuid4())}, "extraction_run_id", id="run-id"),
-    pytest.param({"is_confirmed": False}, "is_confirmed", id="unknown-field"),
+    pytest.param(
+        {"technologies": ["x" * 41]}, "technologies.0", "input_too_long", id="tech-too-long"
+    ),
+    pytest.param({"technologies": ["  "]}, "technologies.0", "validation_error", id="blank-tech"),
+    pytest.param({"activities": []}, "activities", "validation_error", id="no-activities"),
+    pytest.param({"activities": None}, "activities", "validation_error", id="activities-missing"),
+    pytest.param(
+        {"activities": [{"text": "  "}]}, "activities.0.text", "validation_error", id="blank-item"
+    ),
+    pytest.param(
+        {"activities": [{"text": "가" * 501}]},
+        "activities.0.text",
+        "input_too_long",
+        id="activity-too-long",
+    ),
+    pytest.param(
+        {"activities": [{"text": "x"}] * 21}, "activities", "validation_error", id="21-activities"
+    ),
+    pytest.param(
+        {"activities": [{"text": "x", "source_span": "AI"}]},
+        "activities.0.source_span",
+        "validation_error",
+        id="span",
+    ),
+    pytest.param({"source_type": "resume_extract"}, "source_type", "validation_error", id="type"),
+    pytest.param(
+        {"extraction_run_id": str(uuid.uuid4())},
+        "extraction_run_id",
+        "validation_error",
+        id="run-id",
+    ),
+    pytest.param({"is_confirmed": False}, "is_confirmed", "validation_error", id="unknown-field"),
 ]
 
 
-@pytest.mark.parametrize(("overrides", "field"), INVALID_CARDS)
-def test_create_rejects_invalid_input(client, db, overrides, field):
+@pytest.mark.parametrize(("overrides", "field", "code"), INVALID_CARDS)
+def test_create_rejects_invalid_input(client, db, overrides, field, code):
     body = {k: v for k, v in card(**overrides).items() if v is not None}
 
     response = client.post(EXPERIENCES, json=body, headers=HEADERS)
 
     assert response.status_code == 422
     error = response.json()["error"]
-    assert error["code"] == "validation_error"
+    assert error["code"] == code
     assert field in [detail["field"] for detail in error["details"]]
     assert count(db) == 0
 
