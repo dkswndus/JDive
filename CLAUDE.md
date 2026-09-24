@@ -5,9 +5,9 @@
 ## 현재 상태
 
 - 1단계(Google 로그인, 경험 수동 등록, JD 저장·중복 감지) 구현을 `feat/stage-1` 브랜치에서 진행 중이다. 범위는 스펙 문서 §8이다.
-- **백엔드는 끝났다**(DB·마이그레이션, Google 로그인·세션·로그아웃·계정 삭제, 경험 CRUD, 공고 저장·중복 감지). 진행 상황은 `git log`가 기준이다.
-- **남은 작업:** 프론트엔드(로그인·세션·로그아웃·계정 삭제 → 경험 화면 → 공고 입력 화면. 오류 수집 원문 제거 테스트, Session Replay 끔) → 완료 기준(스펙 §8) 점검, README·Google 설정 안내, PR·CI 확인·병합.
-- **일부러 미룬 것:** 인증 엔드포인트 속도 제한(`429`), 공고 삭제 API, 실제 LLM 호출·분석 결과 화면·PostHog·공고 자동 수집(범위 밖). 콜백 실패는 `/login?error=<code>`로 오므로 프론트엔드가 `/login`을 만들어야 한다.
+- **백엔드는 끝났다**(DB·마이그레이션, Google 로그인·세션·로그아웃·계정 삭제, 경험 CRUD, 공고 저장·중복 감지). 프론트엔드는 **로그인·세션·로그아웃·계정 삭제 화면과 오류 수집 원문 제거(Session Replay 없음)까지 끝났다**. 진행 상황은 `git log`가 기준이다.
+- **남은 작업:** 경험 화면(수동 등록·수정·삭제) → 공고 입력 화면(중복 `409` 처리 포함) → 완료 기준(스펙 §8) 점검, README·Google 설정 안내, PR·CI 확인·병합.
+- **일부러 미룬 것:** 인증 엔드포인트 속도 제한(`429`), 공고 삭제 API, 실제 LLM 호출·분석 결과 화면·PostHog·공고 자동 수집(범위 밖).
 - 사용자 검증 전의 MVP 기획이다. 사용자 성과나 개선 수치가 확보된 것처럼 쓰지 않는다.
 - 화면·API·데이터 모델·수정 규칙·이벤트 정의는 `JDive_MVP_화면_API_수정규칙_v1.1.md`에 있다. 구현 전에 먼저 읽는다.
 - MVP 범위는 **경험 등록 → JD 분석 → 근거 확인·수정 → 공고 검토 결과 저장** 한 흐름이다. 자동 공고 수집, 알림, 추천 피드, 자소서 생성, 적합도 백분율 점수는 범위 밖이다.
@@ -30,6 +30,10 @@
 - 필드 길이·개수 제한은 스펙 §1.2 표를 먼저 확인한다(경험 활동 상한을 놓쳐 고친 적이 있다). 글자 수 초과만 `input_too_long`, 나머지 검증 실패는 `validation_error`다.
 - 백엔드 구조: 라우터는 `app/routers/`, 여러 라우터가 쓰는 검증 요소는 `app/schemas.py`. 테스트는 실제 Google에 접속하지 않고 `tests/fake_google.py`로 대체한다.
 - 보안 테스트는 검증 로직을 일부러 망가뜨려 실제로 실패하는지 확인한다(통과만 하는 테스트를 믿지 않는다).
+- 프론트엔드 구조: `src/app/login`(서버 컴포넌트, `?error=<code>` 안내), `src/app/(app)`(로그인해야 볼 수 있는 화면. `AuthGate`가 `GET /me`로 세션을 확인하고 401이면 `/login`으로 보낸다). 서버 호출은 `src/lib/api.ts`의 `api()`만 쓴다(`ApiError.message`에 서버 문장·본문을 넣지 않는다). 화면에서는 `useSession()`으로 사용자·로그아웃·계정 삭제를 쓴다.
+- Next 16은 기존 지식과 다르다. 코드를 쓰기 전에 `frontend/node_modules/next/dist/docs/`의 해당 문서를 읽는다(예: 오류 경계는 `reset`이 아니라 `retry`, `searchParams`는 Promise).
+- 프론트엔드 Sentry(`@sentry/browser` 11): `sendDefaultPii`가 없어졌고 `dataCollection` 기본값이 수집이다. 그래서 `lib/sentry.ts`가 수집을 끄고, `scrubEvent`는 허용한 필드만 남기는 화이트리스트다. 통합을 추가하면 `sentry.test.ts`의 통합 목록 테스트가 실패한다(의도한 것).
+- 컴포넌트 테스트는 `src/test/mock-api.ts`의 `mockApi()`로 `fetch`를 대신하고 `next/navigation`은 `vi.mock`으로 대체한다. Vitest는 `globals`가 꺼져 있어 정리(`cleanup`)를 `vitest.setup.ts`에서 등록한다.
 
 ## 명령어
 
